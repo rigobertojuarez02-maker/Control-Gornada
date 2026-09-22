@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control de Jornada</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --accent: #10b981;
+      --text: #f8fafc;
+      --text-dim: #94a3b8;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 16px; max-width: 500px; margin: 0 auto; pb: 40px; }
+    h1 { font-size: 1.4rem; margin-bottom: 16px; text-align: center; color: var(--accent); }
+    .card { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 16px; border: 1px solid var(--border); }
+    .card-title { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 12px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .field { margin-bottom: 12px; }
+    label { display: block; font-size: 0.8rem; color: var(--text-dim); margin-bottom: 4px; }
+    input { width: 100%; background: #0f172a; border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: var(--text); font-size: 1rem; }
+    button { width: 100%; background: var(--accent); color: #000; font-weight: bold; padding: 12px; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; margin-top: 8px; }
+    .metric-box { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid var(--border); }
+    .metric-label { font-size: 0.75rem; color: var(--text-dim); }
+    .metric-value { font-size: 1.2rem; font-weight: bold; margin-top: 2px; }
+    .accent-text { color: var(--accent); }
+    .progress-bar { background: #0f172a; height: 10px; border-radius: 5px; overflow: hidden; margin-top: 8px; border: 1px solid var(--border); }
+    .progress-fill { background: var(--accent); height: 100%; width: 0%; transition: width 0.3s ease; }
+    .history-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+
+  <h1>Control de Jornada</h1>
+
+  <!-- Formulario de Captura -->
+  <div class="card">
+    <div class="card-title">Registrar Día</div>
+    <form id="entryForm">
+      <div class="grid">
+        <div class="field">
+          <label>Ganancia Bruta ($)</label>
+          <input type="number" id="income" step="0.01" required placeholder="0.00">
+        </div>
+        <div class="field">
+          <label>Gasto Gasolina ($)</label>
+          <input type="number" id="fuelCost" step="0.01" required placeholder="0.00">
+        </div>
+      </div>
+      <div class="grid">
+        <div class="field">
+          <label>Litros Cargados</label>
+          <input type="number" id="liters" step="0.01" required placeholder="0.0">
+        </div>
+        <div class="field">
+          <label>Km Recorridos</label>
+          <input type="number" id="km" step="0.1" required placeholder="0.0">
+        </div>
+      </div>
+      <div class="grid">
+        <div class="field">
+          <label>Propinas / Otros ($)</label>
+          <input type="number" id="extra" step="0.01" value="0" placeholder="0.00">
+        </div>
+        <div class="field">
+          <label>Otros Gastos ($)</label>
+          <input type="number" id="otherExpenses" step="0.01" value="0" placeholder="0.00">
+        </div>
+      </div>
+      <button type="submit">Guardar Registro</button>
+    </form>
+  </div>
+
+  <!-- Métricas Calculadas -->
+  <div class="card">
+    <div class="card-title">Análisis de Hoy / Último Registro</div>
+    <div class="grid">
+      <div class="metric-box">
+        <div class="metric-label">Ganancia Neta</div>
+        <div class="metric-value accent-text" id="netProfit">$0.00</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-label">Ganancia / Km</div>
+        <div class="metric-value" id="profitPerKm">$0.00</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-label">Rendimiento Auto</div>
+        <div class="metric-value" id="kmPerLiter">0 km/L</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-label">Costo x Km</div>
+        <div class="metric-value" id="costPerKm">$0.00</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Meta de Ahorro -->
+  <div class="card">
+    <div class="card-title">Meta de Ahorro ($70,000.00 MXN)</div>
+    <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
+      <span id="accumulatedSaved">$0.00 acumulados</span>
+      <span id="savingsPercent">0%</span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+  </div>
+
+  <!-- Historial Reciente -->
+  <div class="card">
+    <div class="card-title">Historial Reciente</div>
+    <div id="historyList"></div>
+  </div>
+
+  <script>
+    const GOAL = 70000;
+    let records = JSON.parse(localStorage.getItem('ride_records') || '[]');
+
+    const form = document.getElementById('entryForm');
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      
+      const income = parseFloat(document.getElementById('income').value) || 0;
+      const fuelCost = parseFloat(document.getElementById('fuelCost').value) || 0;
+      const liters = parseFloat(document.getElementById('liters').value) || 0;
+      const km = parseFloat(document.getElementById('km').value) || 0;
+      const extra = parseFloat(document.getElementById('extra').value) || 0;
+      const otherExpenses = parseFloat(document.getElementById('otherExpenses').value) || 0;
+
+      const totalIncome = income + extra;
+      const totalExpenses = fuelCost + otherExpenses;
+      const netProfit = totalIncome - totalExpenses;
+      const profitPerKm = km > 0 ? netProfit / km : 0;
+      const kmPerLiter = liters > 0 ? km / liters : 0;
+      const costPerKm = km > 0 ? totalExpenses / km : 0;
+
+      const newRecord = {
+        date: new Date().toLocaleDateString('es-MX', { month: 'short', day: 'numeric' }),
+        netProfit,
+        profitPerKm,
+        kmPerLiter,
+        costPerKm,
+        totalIncome
+      };
+
+      records.unshift(newRecord);
+      localStorage.setItem('ride_records', JSON.stringify(records));
+      
+      form.reset();
+      updateDashboard();
+    });
+
+    function updateDashboard() {
+      if (records.length === 0) return;
+
+      const last = records[0];
+      document.getElementById('netProfit').innerText = `$${last.netProfit.toFixed(2)}`;
+      document.getElementById('profitPerKm').innerText = `$${last.profitPerKm.toFixed(2)}`;
+      document.getElementById('kmPerLiter').innerText = `${last.kmPerLiter.toFixed(1)} km/L`;
+      document.getElementById('costPerKm').innerText = `$${last.costPerKm.toFixed(2)}`;
+
+      // Total acumulado
+      const totalAccumulated = records.reduce((acc, curr) => acc + curr.netProfit, 0);
+      const percent = Math.min((totalAccumulated / GOAL) * 100, 100);
+
+      document.getElementById('accumulatedSaved').innerText = `$${totalAccumulated.toFixed(2)} MXN`;
+      document.getElementById('savingsPercent').innerText = `${percent.toFixed(1)}%`;
+      document.getElementById('progressFill').style.width = `${percent}%`;
+
+      // Render Historial
+      const historyContainer = document.getElementById('historyList');
+      historyContainer.innerHTML = records.slice(0, 5).map(r => `
+        <div class="history-item">
+          <span>${r.date}</span>
+          <span>Neta: <strong>$${r.netProfit.toFixed(2)}</strong></span>
+          <span>${r.kmPerLiter.toFixed(1)} km/L</span>
+        </div>
+      `).join('');
+    }
+
+    updateDashboard();
+  </script>
+</body>
+</html>
